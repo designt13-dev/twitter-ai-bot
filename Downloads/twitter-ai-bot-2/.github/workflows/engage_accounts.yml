@@ -1,4 +1,3 @@
-name: "🌐 Engage Top Accounts"cat > .github/workflows/engage_accounts.yml << 'YAML'
 name: "🌐 Engage Top Accounts"
 
 on:
@@ -11,7 +10,9 @@ on:
         required: false
         default: "false"
         type: choice
-        options: ["false", "true"]
+        options:
+          - "false"
+          - "true"
 
 jobs:
   engage-bot:
