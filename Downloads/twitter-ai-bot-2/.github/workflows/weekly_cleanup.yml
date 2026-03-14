@@ -1,0 +1,40 @@
+name: 🧹 Weekly Cleanup
+
+on:
+  schedule:
+    # كل أحد منتصف الليل UTC = 3 صباحًا الرياض
+    - cron: '0 0 * * 0'
+  workflow_dispatch:
+
+jobs:
+  cleanup:
+    name: تنظيف السجلات القديمة
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 استنساخ المستودع
+        uses: actions/checkout@v4
+
+      - name: 🐍 إعداد Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 📦 تثبيت المتطلبات
+        run: pip install -r requirements.txt
+
+      - name: 🧹 تنظيف البيانات القديمة
+        run: |
+          python -c "
+          import sys, pathlib
+          sys.path.insert(0, '.')
+          from src.utils import clean_old_used
+          clean_old_used(days=30)
+          print('✅ تم التنظيف بنجاح')
+          "
+
+      - name: 💾 حفظ الملفات المنظفة
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "🧹 تنظيف أسبوعي تلقائي"
+          file_pattern: 'content/used_tweets.json logs/replied_ids.json'
