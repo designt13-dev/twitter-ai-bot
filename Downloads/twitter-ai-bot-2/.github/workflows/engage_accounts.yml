@@ -1,11 +1,10 @@
 name: "🌐 Engage Top Accounts — مرة يومياً"
+cat > .github/workflows/engage_accounts.yml << 'EOF'
+name: "🌐 Engage Top Accounts — مرة يومياً"
 
 on:
   schedule:
-    # 11:00 ص الرياض = 08:00 UTC
     - cron: "0 8 * * *"
-    # إعادة اكتشاف الحسابات كل أسبوع (الأحد)
-    # - cron: "0 8 * * 0"
   workflow_dispatch:
     inputs:
       rediscover:
@@ -22,19 +21,12 @@ jobs:
     name: "🔍 Engage & Discover"
     runs-on: ubuntu-latest
     timeout-minutes: 25
-
     steps:
-      - name: "⬇️ Checkout"
-        uses: actions/checkout@v4
-
-      - name: "🐍 Setup Python 3.11"
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-
-      - name: "📦 Install dependencies"
-        run: pip install -r requirements.txt
-
+      - run: pip install -r requirements.txt
       - name: "🌐 Run Engage Pipeline"
         env:
           TWITTER_CONSUMER_KEY:    ${{ secrets.TWITTER_CONSUMER_KEY }}
@@ -48,11 +40,3 @@ jobs:
           else
             python -m src.orchestrator --mode engage
           fi
-
-      - name: "📋 Upload log"
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: engage-log-${{ github.run_id }}
-          path: logs/
-          retention-days: 7
