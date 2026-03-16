@@ -1,24 +1,41 @@
-name: "🤖 Daily AI Posts — 8 تغريدات يومياً"
+name: "🤖 Daily AI Posts — 16 تغريدة يومياً"
 
 on:
   schedule:
-    # ── 8 أوقات يومية (بتوقيت UTC → توقيت الرياض UTC+3) ──────
-    # 09:00 ص الرياض  = 06:00 UTC
-    - cron: "0 6 * * *"
-    # 10:00 ص الرياض  = 07:00 UTC
+    # ── 16 وقت يومي (UTC → الرياض UTC+3) ──────────────────
+    # 07:00 ص = 04:00 UTC
+    - cron: "0 4 * * *"
+    # 08:30 ص = 05:30 UTC
+    - cron: "30 5 * * *"
+    # 10:00 ص = 07:00 UTC
     - cron: "0 7 * * *"
-    # 12:00 م الرياض  = 09:00 UTC
-    - cron: "0 9 * * *"
-    # 02:00 م الرياض  = 11:00 UTC
-    - cron: "0 11 * * *"
-    # 04:00 م الرياض  = 13:00 UTC
+    # 11:30 ص = 08:30 UTC
+    - cron: "30 8 * * *"
+    # 01:00 م = 10:00 UTC
+    - cron: "0 10 * * *"
+    # 02:30 م = 11:30 UTC
+    - cron: "30 11 * * *"
+    # 04:00 م = 13:00 UTC
     - cron: "0 13 * * *"
-    # 06:00 م الرياض  = 15:00 UTC
-    - cron: "0 15 * * *"
-    # 08:00 م الرياض  = 17:00 UTC
-    - cron: "0 17 * * *"
-    # 10:00 م الرياض  = 19:00 UTC
-    - cron: "0 19 * * *"
+    # 05:30 م = 14:30 UTC
+    - cron: "30 14 * * *"
+    # 07:00 م = 16:00 UTC
+    - cron: "0 16 * * *"
+    # 08:30 م = 17:30 UTC
+    - cron: "30 17 * * *"
+    # 09:30 م = 18:30 UTC
+    - cron: "30 18 * * *"
+    # 10:30 م = 19:30 UTC
+    - cron: "30 19 * * *"
+    # 11:00 م = 20:00 UTC
+    - cron: "0 20 * * *"
+    # 11:30 م = 20:30 UTC
+    - cron: "30 20 * * *"
+    # 12:00 ص = 21:00 UTC
+    - cron: "0 21 * * *"
+    # 01:00 ص = 22:00 UTC
+    - cron: "0 22 * * *"
+
   workflow_dispatch:
     inputs:
       mode:
@@ -52,11 +69,11 @@ jobs:
 
       - name: "🚀 Run Post Pipeline"
         env:
-          TWITTER_CONSUMER_KEY:    ${{ secrets.TWITTER_CONSUMER_KEY }}
-          TWITTER_CONSUMER_SECRET: ${{ secrets.TWITTER_CONSUMER_SECRET }}
-          TWITTER_ACCESS_TOKEN:    ${{ secrets.TWITTER_ACCESS_TOKEN }}
+          TWITTER_CONSUMER_KEY:        ${{ secrets.TWITTER_CONSUMER_KEY }}
+          TWITTER_CONSUMER_SECRET:     ${{ secrets.TWITTER_CONSUMER_SECRET }}
+          TWITTER_ACCESS_TOKEN:        ${{ secrets.TWITTER_ACCESS_TOKEN }}
           TWITTER_ACCESS_TOKEN_SECRET: ${{ secrets.TWITTER_ACCESS_TOKEN_SECRET }}
-          TWITTER_BEARER_TOKEN:    ${{ secrets.TWITTER_BEARER_TOKEN }}
+          TWITTER_BEARER_TOKEN:        ${{ secrets.TWITTER_BEARER_TOKEN }}
         run: python -m src.orchestrator --mode post --n 1
 
       - name: "📋 Upload log"
@@ -65,4 +82,4 @@ jobs:
         with:
           name: post-log-${{ github.run_id }}
           path: logs/
-          retention-days: 14
+          retention-days: 7

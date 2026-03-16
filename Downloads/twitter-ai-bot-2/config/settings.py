@@ -18,9 +18,9 @@ OPENAI_KEY           = os.getenv("OPENAI_API_KEY", "")
 TIMEZONE = "Asia/Riyadh"
 
 # ── إعدادات النشر اليومي ────────────────────────────────────
-DAILY_POST_COUNT     = 8   # رُفع من 5 → 8 تغريدات يومياً
-REPLY_COUNT_PER_RUN  = 5   # ردود لكل تشغيل
-REPLY_RUNS_PER_DAY   = 3   # تشغيلات يوميًا → 15 رد/يوم
+DAILY_POST_COUNT     = 16  # رُفع إلى 16 تغريدة يومياً
+REPLY_COUNT_PER_RUN  = 7   # ردود لكل تشغيل
+REPLY_RUNS_PER_DAY   = 3   # تشغيلات يوميًا → 21 رد/يوم
 
 # ── هاشتاقات البحث للردود (للبحث فقط — لا تُضاف للمنشورات) ─
 SEARCH_HASHTAGS = [
@@ -98,6 +98,31 @@ RSS_SOURCES = [
     {
         "name": "InfoQ AI",
         "url":  "https://feed.infoq.com/InfoQ/ai-ml-data-eng",
+        "lang": "en",
+    },
+    {
+        "name": "The AI Beat",
+        "url":  "https://venturebeat.com/ai/feed/",
+        "lang": "en",
+    },
+    {
+        "name": "Hugging Face Blog",
+        "url":  "https://huggingface.co/blog/feed.xml",
+        "lang": "en",
+    },
+    {
+        "name": "OpenAI Blog",
+        "url":  "https://openai.com/news/rss.xml",
+        "lang": "en",
+    },
+    {
+        "name": "Google AI Blog",
+        "url":  "https://blog.research.google/feeds/posts/default",
+        "lang": "en",
+    },
+    {
+        "name": "DeepMind Blog",
+        "url":  "https://deepmind.google/blog/rss.xml",
         "lang": "en",
     },
 ]

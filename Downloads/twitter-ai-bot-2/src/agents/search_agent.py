@@ -38,6 +38,8 @@ NOVELTY_KEYWORDS = [
     "launch", "announce", "release", "introduce", "unveil", "debut",
     "new", "first", "breakthrough", "upgrade", "update", "feature",
     "إطلاق", "إعلان", "جديد", "أول", "طرح", "تحديث", "يستعرض",
+    "open-source", "open source", "released model", "rolled out",
+    "available", "ships", "now available",
 ]
 
 JOB_KEYWORDS = [
@@ -60,6 +62,8 @@ KSA_KEYWORDS = [
 TRUSTED_SOURCES = [
     "MIT Technology Review", "VentureBeat AI", "TechCrunch",
     "The Verge", "Wired AI", "Ars Technica", "Analytics Vidhya",
+    "OpenAI Blog", "Google AI Blog", "DeepMind Blog", "Hugging Face Blog",
+    "InfoQ AI",
 ]
 
 BIG_COMPANIES = [
