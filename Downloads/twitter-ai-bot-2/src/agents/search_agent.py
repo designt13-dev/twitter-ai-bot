@@ -1,275 +1,300 @@
-# src/agents/search_agent.py
+# src/agents/search_agent.py — v6 (AI + فنون + اكتشافات، بدون رياضة)
 """
-وكيل البحث والخوارزميات (Search & Algorithm Agent)
-══════════════════════════════════════════════════════════════
-المهام:
-  1. جلب أخبار تقنية حقيقية من RSS بفلترة متقدمة
-  2. تحليل الخوارزمية: تقييم قابلية التفاعل لكل خبر (Engagement Score)
-  3. ترتيب الأخبار حسب نقاط التفاعل المتوقع
-  4. استخراج الكيانات: اسم الأداة/الشركة/الشخصية
-  5. تصنيف الأخبار في فئات (novelty / jobs / numbers / KSA-relevant)
-
-معايير نقاط الخوارزمية:
-  +4  : خبر عن إطلاق أداة/ميزة جديدة (novelty)
-  +3  : خبر يمس الوظائف أو التعليم أو الصحة (KSA relevance)
-  +3  : خبر فيه رقم أو إحصاء مميز (shareability)
-  +2  : صدر خلال أقل من 24 ساعة (freshness)
-  +2  : مصدر موثوق (MIT/VentureBeat/TechCrunch)
-  +1  : يذكر شركة كبرى (OpenAI/Google/Meta/Apple/Microsoft/Samsung)
-  -2  : مراجعة منتج فقط
-  -2  : خبر تقني غير AI/ML (أجهزة، ألعاب، ترفيه)
-  -3  : خبر أقدم من 48 ساعة
-══════════════════════════════════════════════════════════════
+وكيل البحث والخوارزميات — v6
+══════════════════════════════════════════════════════════════════
+التحسينات في v6:
+  ✅ يدعم ثلاثة محاور: AI + فنون عالمية + اكتشافات علمية حديثة
+  ✅ فلتر صارم يحذف: رياضة / ترفيه / مراجعات / عروض تجارية
+  ✅ يستخرج image_url من كل خبر ويرفقه مع المقال
+  ✅ خوارزمية تقييم محسّنة تناسب المحاور الثلاثة
+══════════════════════════════════════════════════════════════════
 """
 import re
 import sys
 import pathlib
-from datetime import datetime, timedelta
+from datetime import datetime
 
 import pytz
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent.parent.parent))
 
-from src.news_fetcher import fetch_articles, translate_to_arabic
+from src.news_fetcher import fetch_articles
 from src.utils import logger, clean_text
 
-# ── كلمات مفتاحية لتقييم الخوارزمية ──────────────────────────
-NOVELTY_KEYWORDS = [
-    "launch", "announce", "release", "introduce", "unveil", "debut",
-    "new", "first", "breakthrough", "upgrade", "update", "feature",
-    "إطلاق", "إعلان", "جديد", "أول", "طرح", "تحديث", "يستعرض",
-    "open-source", "open source", "released model", "rolled out",
-    "available", "ships", "now available",
+# ══════════════════════════════════════════════════════════════════
+# كلمات المحاور المسموح بها
+# ══════════════════════════════════════════════════════════════════
+
+# المحور ١: الذكاء الاصطناعي
+AI_KEYWORDS = [
+    "ai", "artificial intelligence", "machine learning", "deep learning",
+    "neural network", "llm", "large language model", "gpt", "gemini",
+    "claude", "llama", "chatbot", "chatgpt", "automation", "robot",
+    "algorithm", "data science", "openai", "google ai", "microsoft ai",
+    "meta ai", "deepmind", "anthropic", "nvidia", "foundation model",
+    "generative ai", "diffusion model", "transformer", "agent",
+    "ذكاء اصطناعي", "تعلم آلي", "نموذج لغوي", "روبوت", "خوارزمية",
 ]
 
-JOB_KEYWORDS = [
-    "job", "employment", "workforce", "career", "hire", "layoff",
-    "replace", "automation", "worker", "salary", "skills",
-    "وظيف", "عمل", "توظيف", "مهارات", "بطالة", "أتمتة", "مستقبل",
+# المحور ٢: الفنون والثقافة العالمية
+ARTS_KEYWORDS = [
+    "art", "museum", "exhibition", "gallery", "painting", "sculpture",
+    "architecture", "design", "fashion", "creative", "artist",
+    "digital art", "generative art", "ai art", "nft", "culture",
+    "film festival", "music", "photography", "illustration",
+    "فن", "متحف", "معرض", "لوحة", "نحت", "تصميم", "إبداع",
+    "فنان", "فنون رقمية", "ثقافة", "تصوير فوتوغرافي",
 ]
 
-NUMBER_PATTERN = re.compile(
-    r'\b(\d[\d,]*\.?\d*)\s*(%|billion|million|thousand|x faster|×|أضعاف|مليار|مليون|ألف|%)\b',
+# المحور ٣: الاكتشافات والعلوم الحديثة
+DISCOVERY_KEYWORDS = [
+    "discovery", "research", "study", "scientist", "breakthrough",
+    "found", "space", "astronomy", "biology", "medicine", "physics",
+    "climate", "environment", "archaeology", "ancient", "dna",
+    "اكتشاف", "علم", "أبحاث", "دراسة", "فضاء", "طب", "بيئة",
+    "آثار", "علماء",
+]
+
+# ══════════════════════════════════════════════════════════════════
+# كلمات محظورة صارمة (رياضة / ترفيه / ألعاب / تجاري)
+# ══════════════════════════════════════════════════════════════════
+
+HARD_BLOCK = [
+    # رياضة
+    "football", "soccer", "basketball", "nba", "nfl", "cricket",
+    "tennis", "golf", "rugby", "hockey", "esports", "t20",
+    "world cup", "premier league", "champions league", "fifa",
+    "كرة قدم", "كرة سلة", "دوري", "كأس العالم", "كرة",
+    # ألعاب وترفيه
+    "wordle", "crossword", "puzzle answer", "game hints",
+    "connections answers", "nyt connections", "quiz",
+    "movie", "tv show", "series", "netflix", "disney",
+    "streaming", "episode", "season", "trailer",
+    "فيلم", "مسلسل", "حلقة",
+    # تجاري خالص
+    "best buy", "deal of the day", "discount", "promo code",
+    "coupon", "gift card", "sale price", "buying guide",
+    "best laptop", "best phone", "best headphone", "vs review",
+    # سياسة وعسكري
+    "military", "defense", "weapon", "warfare", "missile",
+    "drone strike", "pentagon", "nato", "army", "war",
+    "republican", "democrat", "election", "حرب", "عسكري", "انتخابات",
+]
+
+# ══════════════════════════════════════════════════════════════════
+# كلمات لرفع النقاط
+# ══════════════════════════════════════════════════════════════════
+
+NOVELTY_KW = [
+    "launch", "announce", "release", "unveil", "introduce",
+    "new", "first", "breakthrough", "upgrade", "update",
+    "open-source", "available", "إطلاق", "إعلان", "جديد", "أول",
+]
+
+NUMBER_RE = re.compile(
+    r'(\$?\d[\d,\.]*)[\s\-]*(billion|million|thousand|%|x\b|times)',
     re.IGNORECASE
 )
 
-KSA_KEYWORDS = [
-    "saudi", "ksa", "riyadh", "vision 2030", "sdaia", "neom",
-    "سعودي", "المملكة", "رياض", "رؤية", "2030", "نيوم", "sdaia",
-    "تعليم", "صحة", "education", "health",
-]
-
 TRUSTED_SOURCES = [
-    "MIT Technology Review", "VentureBeat AI", "TechCrunch",
-    "The Verge", "Wired AI", "Ars Technica", "Analytics Vidhya",
-    "OpenAI Blog", "Google AI Blog", "DeepMind Blog", "Hugging Face Blog",
-    "InfoQ AI",
+    "MIT Technology Review", "VentureBeat", "TechCrunch",
+    "The Verge", "Wired", "Ars Technica", "OpenAI Blog",
+    "Google AI Blog", "DeepMind Blog", "Hugging Face Blog",
+    "Hyperallergic", "Artsy", "Dezeen", "National Geographic",
+    "Scientific American", "Nature", "Science News",
 ]
 
-BIG_COMPANIES = [
+BIG_NAMES = [
     "openai", "google", "deepmind", "meta", "apple", "microsoft",
-    "amazon", "anthropic", "nvidia", "tesla", "sam altman",
-    "elon musk", "sundar pichai",
-]
-
-REVIEW_KEYWORDS = [
-    "review", "hands-on", "best buy", "should you buy", "price",
-    "مراجعة", "سعر", "أفضل", "شراء",
-]
-
-NON_AI_PENALTY = [
-    "game", "gaming", "movie", "series", "sport", "football",
-    "puzzle", "crossword", "headphone", "speaker", "laptop review",
-    "ألعاب", "مسلسل", "فيلم", "كرة", "سماعة", "ترفيه",
+    "amazon", "anthropic", "nvidia", "louvre", "moma", "nasa",
 ]
 
 
-def _score_article(article: dict) -> int:
-    """
-    يحسب نقاط التفاعل المتوقع للخبر.
-    كلما زادت النقاط كلما احتمال التفاعل أعلى.
-    """
-    score = 0
+# ══════════════════════════════════════════════════════════════════
+# دوال مساعدة
+# ══════════════════════════════════════════════════════════════════
+
+def _is_allowed(article: dict) -> bool:
+    """يتحقق إن الخبر ينتمي لمحور مسموح به وليس محجوباً."""
     title   = (article.get("title",   "") or "").lower()
     summary = (article.get("summary", "") or "").lower()
     text    = title + " " + summary
-    source  = article.get("source",  "")
 
-    # ── إيجابيات ─────────────────────────────────────────────
-    if any(kw in text for kw in NOVELTY_KEYWORDS):
+    # حظر صارم أولاً
+    if any(kw in text for kw in HARD_BLOCK):
+        return False
+
+    # يجب أن ينتمي لأحد المحاور الثلاثة
+    in_ai        = any(kw in text for kw in AI_KEYWORDS)
+    in_arts      = any(kw in text for kw in ARTS_KEYWORDS)
+    in_discovery = any(kw in text for kw in DISCOVERY_KEYWORDS)
+
+    return in_ai or in_arts or in_discovery
+
+
+def _score(article: dict) -> int:
+    """يحسب نقاط الجودة والتفاعل المتوقع."""
+    score   = 0
+    title   = (article.get("title",   "") or "").lower()
+    summary = (article.get("summary", "") or "").lower()
+    text    = title + " " + summary
+    source  = article.get("source", "")
+
+    if any(kw in text for kw in NOVELTY_KW):
         score += 4
-
-    if any(kw in text for kw in JOB_KEYWORDS):
+    if NUMBER_RE.search(text):
         score += 3
-
-    if NUMBER_PATTERN.search(title + " " + summary):
+    if any(kw in text for kw in ["saudi", "ksa", "riyadh", "vision 2030",
+                                   "سعودي", "المملكة", "رؤية"]):
         score += 3
-
-    if any(kw in text for kw in KSA_KEYWORDS):
-        score += 3
-
     if any(s in source for s in TRUSTED_SOURCES):
         score += 2
-
-    if any(co in text for co in BIG_COMPANIES):
+    if any(n in text for n in BIG_NAMES):
         score += 1
 
-    # ── تحقق من حداثة الخبر ─────────────────────────────────
+    # حداثة الخبر
     pub_date = article.get("published_parsed")
     if pub_date:
         try:
             riyadh = pytz.timezone("Asia/Riyadh")
             pub_dt = datetime(*pub_date[:6], tzinfo=pytz.utc).astimezone(riyadh)
-            age_hours = (datetime.now(riyadh) - pub_dt).total_seconds() / 3600
-            if age_hours < 24:
+            age_h  = (datetime.now(riyadh) - pub_dt).total_seconds() / 3600
+            if age_h < 24:
                 score += 2
-            elif age_hours > 48:
+            elif age_h > 48:
                 score -= 3
         except Exception:
             pass
 
-    # ── سلبيات ───────────────────────────────────────────────
-    if any(kw in text for kw in REVIEW_KEYWORDS):
-        score -= 2
-
-    if any(kw in text for kw in NON_AI_PENALTY):
+    # خصم مراجعات خالصة
+    if any(kw in text for kw in ["review", "hands-on", "should you buy", "مراجعة"]):
         score -= 2
 
     return score
 
 
 def _extract_entities(article: dict) -> dict:
-    """
-    يستخرج الكيانات الرئيسية من الخبر:
-    - اسم الأداة/المنتج
-    - اسم الشركة
-    - الأرقام المميزة
-    - الفئة (novelty / jobs / risk / ksa / general)
-    """
     title   = article.get("title",   "") or ""
     summary = article.get("summary", "") or ""
     text    = title + " " + summary
     t_lower = text.lower()
 
-    # ── اسم الأداة ───────────────────────────────────────────
-    ai_tools = [
-        "ChatGPT", "GPT-4", "GPT-5", "o1", "o3", "o4",
+    # أدوات AI
+    AI_TOOLS = [
+        "ChatGPT", "GPT-4", "GPT-5", "GPT-4o", "o1", "o3", "o4",
         "Gemini", "Claude", "Grok", "Copilot", "Perplexity",
-        "Mistral", "Llama", "DeepSeek", "Sora", "DALL-E",
-        "Midjourney", "Stable Diffusion", "Runway",
+        "Llama", "DeepSeek", "Sora", "DALL-E", "Midjourney",
+        "Stable Diffusion", "Runway", "Mistral", "Gemma",
     ]
-    detected_tool = next(
-        (t for t in ai_tools if t.lower() in t_lower), ""
-    )
+    tool = next((t for t in AI_TOOLS if t.lower() in t_lower), "")
 
-    # ── اسم الشركة ───────────────────────────────────────────
-    companies = [
+    # شركات
+    COMPANIES = [
         "OpenAI", "Google", "DeepMind", "Meta", "Apple",
         "Microsoft", "Amazon", "Anthropic", "Nvidia", "Tesla",
-        "Samsung", "Huawei", "xAI", "Mistral", "Cohere",
+        "Samsung", "xAI", "Mistral", "Cohere", "SDAIA",
     ]
-    detected_company = next(
-        (c for c in companies if c.lower() in t_lower), ""
-    )
+    company = next((c for c in COMPANIES if c.lower() in t_lower), "")
 
-    # ── الأرقام المميزة ──────────────────────────────────────
-    numbers_found = NUMBER_PATTERN.findall(text)
-    key_number = f"{numbers_found[0][0]}{numbers_found[0][1]}" if numbers_found else ""
+    # أرقام
+    nums = NUMBER_RE.findall(text)
+    key_number = f"{nums[0][0]} {nums[0][1]}" if nums else ""
 
-    # ── تصنيف الخبر ─────────────────────────────────────────
-    if any(kw in t_lower for kw in NOVELTY_KEYWORDS[:8]):
-        category = "novelty"
-    elif any(kw in t_lower for kw in JOB_KEYWORDS[:5]):
+    # تصنيف
+    if any(kw in t_lower for kw in ["art", "museum", "painting", "design",
+                                      "فن", "متحف", "تصميم"]):
+        category = "arts"
+    elif any(kw in t_lower for kw in ["discover", "research", "science",
+                                        "اكتشاف", "علم"]):
+        category = "discovery"
+    elif any(kw in t_lower for kw in ["open-source", "open source"]):
+        category = "open_source"
+    elif any(kw in t_lower for kw in ["billion", "million", "funding",
+                                        "تمويل"]):
+        category = "funding"
+    elif any(kw in t_lower for kw in ["layoff", "fired", "job loss",
+                                        "تسريح"]):
         category = "jobs"
-    elif any(kw in t_lower for kw in KSA_KEYWORDS[:5]):
+    elif any(kw in t_lower for kw in ["saudi", "ksa", "vision 2030",
+                                        "سعودي", "رؤية"]):
         category = "ksa"
-    elif "risk" in t_lower or "danger" in t_lower or "threat" in t_lower:
+    elif any(kw in t_lower for kw in ["risk", "danger", "warning", "ban",
+                                        "خطر", "تحذير"]):
         category = "risk"
     else:
-        category = "general"
+        category = "novelty"
 
-    return {
-        "tool":     detected_tool,
-        "company":  detected_company,
-        "number":   key_number,
-        "category": category,
-    }
+    return {"tool": tool, "company": company, "number": key_number, "category": category}
 
 
-def _filter_ai_only(articles: list) -> list:
-    """
-    يُبقي فقط الأخبار المرتبطة بالذكاء الاصطناعي والتقنية الجوهرية.
-    يُزيل: رياضة، ترفيه، ألعاب، مراجعات أجهزة خالصة.
-    """
-    AI_MUST_HAVE = [
-        "ai", "artificial intelligence", "machine learning", "deep learning",
-        "neural", "llm", "gpt", "gemini", "claude", "llama", "chatbot",
-        "automation", "robot", "algorithm", "model", "data science",
-        "openai", "google ai", "microsoft ai", "meta ai", "deepmind",
-        "ذكاء اصطناعي", "تعلم آلي", "نموذج لغوي", "روبوت",
-    ]
-    result = []
-    for art in articles:
-        title   = (art.get("title",   "") or "").lower()
-        summary = (art.get("summary", "") or "").lower()
-        combined = title + " " + summary
-        if any(kw in combined for kw in AI_MUST_HAVE):
-            result.append(art)
-    return result
+def _get_image(article: dict) -> str:
+    """يحاول استخراج رابط صورة من الخبر."""
+    # محاولة 1: حقل image_url مباشر
+    img = article.get("image_url") or article.get("image") or ""
+    if img and img.startswith("http"):
+        return img
 
+    # محاولة 2: media_content من feedparser
+    media = article.get("media_content", [])
+    if media and isinstance(media, list):
+        for m in media:
+            url = m.get("url", "")
+            if url and url.startswith("http"):
+                return url
+
+    # محاولة 3: enclosures
+    enclosures = article.get("enclosures", [])
+    if enclosures:
+        for enc in enclosures:
+            url = enc.get("url", "")
+            if url and ("jpg" in url or "png" in url or "jpeg" in url or "webp" in url):
+                return url
+
+    return ""
+
+
+# ══════════════════════════════════════════════════════════════════
+# SearchAgent v6
+# ══════════════════════════════════════════════════════════════════
 
 class SearchAgent:
-    """
-    وكيل البحث والخوارزميات.
-    الاستخدام:
-        agent = SearchAgent()
-        articles = agent.get_top_articles(n=8)
-    """
+    """وكيل البحث v6 — يجلب أخبار AI + فنون + اكتشافات، بدون رياضة."""
 
     def __init__(self):
-        self.name = "SearchAgent"
+        self.name = "SearchAgent-v6"
 
     def get_top_articles(self, n: int = 8) -> list:
-        """
-        يُعيد أفضل n خبر مرتبة حسب نقاط الخوارزمية.
-        كل خبر يحمل:
-          - score: نقاط التفاعل المتوقع
-          - entities: كيانات مستخرجة (tool, company, number, category)
-          - title, summary, link, image_url, source
-        """
-        logger.info(f"[{self.name}] 🔍 جلب الأخبار...")
-        raw_articles = fetch_articles()
+        logger.info(f"[{self.name}] 🔍 جلب الأخبار من المصادر...")
+        raw = fetch_articles()
 
-        # ── فلترة AI فقط ────────────────────────────────────
-        ai_articles = _filter_ai_only(raw_articles)
+        # فلترة المحاور المسموحة فقط
+        allowed = [a for a in raw if _is_allowed(a)]
         logger.info(
-            f"[{self.name}] المجموع: {len(raw_articles)} | "
-            f"AI فقط: {len(ai_articles)}"
+            f"[{self.name}] الكل: {len(raw)} | "
+            f"مسموح: {len(allowed)} | "
+            f"محجوب: {len(raw) - len(allowed)}"
         )
 
-        # ── تقييم كل خبر ────────────────────────────────────
-        scored = []
-        for art in ai_articles:
-            score    = _score_article(art)
-            entities = _extract_entities(art)
-            art["score"]    = score
-            art["entities"] = entities
-            scored.append(art)
+        # تقييم وترتيب
+        for art in allowed:
+            art["score"]    = _score(art)
+            art["entities"] = _extract_entities(art)
+            art["image_url"] = _get_image(art)
 
-        # ── ترتيب تنازلي حسب النقاط ─────────────────────────
-        scored.sort(key=lambda x: x["score"], reverse=True)
+        allowed.sort(key=lambda x: x["score"], reverse=True)
+        top = allowed[:n]
 
-        top = scored[:n]
         for i, art in enumerate(top, 1):
             logger.info(
-                f"[{self.name}] #{i} نقاط={art['score']:+d} | "
-                f"فئة={art['entities']['category']} | "
-                f"{art.get('source','?')} | {art.get('title','')[:60]}"
+                f"[{self.name}] #{i} +{art['score']} | "
+                f"{art['entities']['category']} | "
+                f"{art.get('source','?')} | "
+                f"{'🖼️' if art.get('image_url') else '─'} | "
+                f"{art.get('title','')[:55]}"
             )
 
         return top
 
     def get_best_article(self) -> dict | None:
-        """يُعيد الخبر الأفضل نقاطًا"""
         top = self.get_top_articles(n=1)
         return top[0] if top else None

@@ -1,29 +1,32 @@
-# src/agents/content_agent.py  — النسخة v4 (بدون ترجمة آلية)
+# src/agents/content_agent.py — النسخة v6 (صياغة سعودية طبيعية، منشور كامل)
 """
-وكيل الصياغة التفاعلية — v4
-══════════════════════════════════════════════════════════════
-الإصلاح الجذري:
-  ❌ قبل: ترجمة Google Translate ركيكة → تشويه المعنى
-  ✅ الآن: استخراج حقائق من الإنجليزية → حقن في قوالب سعودية مكتوبة يدوياً
+وكيل الصياغة — v6
+══════════════════════════════════════════════════════════════════
+المشاكل التي حلّها v6:
+  ❌ v5: القوالب تبدو آلية ومترجمة
+  ❌ v5: حد 270 حرف يقطع الجمل
+  ❌ v5: لا يدعم الفنون والاكتشافات بشكل كافٍ
+  ❌ v5: الوكيل يُدقق أجزاء وليس المنشور كاملاً
 
-المنهج:
-  1. استخراج: شركة + أداة + فعل + رقم + فئة (regex + keyword maps)
-  2. اختيار قالب سعودي مناسب لكل فئة (novelty / jobs / ksa / risk / funding)
-  3. حقن الحقائق في القالب → تغريدة مكتملة 230-270 حرف
-  4. تدقيق جودة: هوك واضح، ختام تفاعلي، لهجة سعودية، اكتمال الجملة
+التحسينات في v6:
+  ✅ قوالب مكتوبة كأنها كلام إنسان سعودي حقيقي
+  ✅ الحد الأقصى 280 حرف (حد تويتر الفعلي) — الأولوية لاكتمال المعنى
+  ✅ التدقيق يشمل المنشور كاملاً (هوك + معلومة + سؤال)
+  ✅ دعم كامل: AI + فنون + اكتشافات علمية
+  ✅ صورة مع كل منشور
 
-نمط التغريدة:
-  ┌─────────────────────────────────────────────────────────┐
-  │ [إيموجي] [هوك يثير الفضول — سطر واحد]                │
-  │                                                         │
-  │ [شركة/أداة] [فعل سعودي] [موضوع]                       │
-  │                                                         │
-  │ ← [حقيقة 1 مكتملة]                                     │
-  │ ← [حقيقة 2 مكتملة]                                     │
-  │                                                         │
-  │ [سؤال سعودي تفاعلي] 💬                                 │
-  └─────────────────────────────────────────────────────────┘
-══════════════════════════════════════════════════════════════
+هيكل المنشور الإلزامي:
+  ┌─────────────────────────────────────┐
+  │ [إيموجي] هوك جذاب — سطر واحد       │
+  │                                     │
+  │ سطر معلومة أول — كامل المعنى       │
+  │ سطر معلومة ثانٍ — يُضيف عمقاً     │
+  │                                     │
+  │ سؤال يدفع للتفاعل 💬               │
+  └─────────────────────────────────────┘
+
+الحد الأقصى الإجمالي: 280 حرف (لا اقتطاع للجمل)
+══════════════════════════════════════════════════════════════════
 """
 import re
 import random
@@ -34,644 +37,514 @@ sys.path.insert(0, str(pathlib.Path(__file__).parent.parent.parent))
 
 from src.utils import logger, tweet_length
 
-# ══════════════════════════════════════════════════════════════
-# ①  خرائط استخراج الحقائق من العنوان الإنجليزي
-# ══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════
+# خرائط الكيانات
+# ══════════════════════════════════════════════════════════════════
 
 COMPANY_MAP = {
-    "openai":      "OpenAI",
-    "google":      "Google",
-    "deepmind":    "DeepMind",
-    "meta":        "Meta",
-    "apple":       "Apple",
-    "microsoft":   "Microsoft",
-    "amazon":      "Amazon",
-    "anthropic":   "Anthropic",
-    "nvidia":      "Nvidia",
-    "tesla":       "Tesla",
-    "samsung":     "Samsung",
-    "huawei":      "Huawei",
-    "xai":         "xAI",
-    "mistral":     "Mistral",
-    "cohere":      "Cohere",
-    "deepseek":    "DeepSeek",
-    "perplexity":  "Perplexity",
-    "stability":   "Stability AI",
-    "runway":      "Runway",
-    "adobe":       "Adobe",
-    "salesforce":  "Salesforce",
-    "ibm":         "IBM",
-    "baidu":       "Baidu",
-    "alibaba":     "Alibaba",
-    "tencent":     "Tencent",
+    "openai": "OpenAI", "google": "Google", "deepmind": "DeepMind",
+    "meta": "Meta", "apple": "Apple", "microsoft": "Microsoft",
+    "amazon": "Amazon", "anthropic": "Anthropic", "nvidia": "Nvidia",
+    "tesla": "Tesla", "samsung": "Samsung", "xai": "xAI",
+    "mistral": "Mistral", "deepseek": "DeepSeek", "perplexity": "Perplexity",
+    "stability": "Stability AI", "runway": "Runway", "adobe": "Adobe",
+    "ibm": "IBM", "baidu": "Baidu", "alibaba": "Alibaba",
+    "hugging face": "Hugging Face", "cohere": "Cohere", "sdaia": "SDAIA",
 }
 
 TOOL_MAP = {
-    "chatgpt":           "ChatGPT",
-    "gpt-4":             "GPT-4",
-    "gpt-5":             "GPT-5",
-    "gpt-4o":            "GPT-4o",
-    "o3":                "o3",
-    "o4":                "o4",
-    "gemini":            "Gemini",
-    "gemini 2":          "Gemini 2",
-    "claude":            "Claude",
-    "claude 4":          "Claude 4",
-    "grok":              "Grok",
-    "copilot":           "Copilot",
-    "perplexity":        "Perplexity",
-    "midjourney":        "Midjourney",
-    "sora":              "Sora",
-    "dall-e":            "DALL-E",
-    "stable diffusion":  "Stable Diffusion",
-    "llama":             "Llama",
-    "mistral":           "Mistral",
-    "deepseek":          "DeepSeek",
-    "qwen":              "Qwen",
-    "notebooklm":        "NotebookLM",
-    "cursor":            "Cursor",
-    "gemma":             "Gemma",
-    "phi":               "Phi",
-    "codeium":           "Codeium",
-    "github copilot":    "GitHub Copilot",
-    "devin":             "Devin",
-    "replit":            "Replit AI",
+    "chatgpt": "ChatGPT", "gpt-4": "GPT-4", "gpt-5": "GPT-5",
+    "gpt-4o": "GPT-4o", "o3": "o3", "o4": "o4",
+    "gemini": "Gemini", "claude": "Claude", "grok": "Grok",
+    "copilot": "Copilot", "sora": "Sora", "dall-e": "DALL-E",
+    "stable diffusion": "Stable Diffusion", "llama": "Llama",
+    "deepseek": "DeepSeek", "midjourney": "Midjourney",
+    "notebooklm": "NotebookLM", "cursor": "Cursor", "gemma": "Gemma",
 }
 
-# فعل إنجليزي → فعل سعودي
 ACTION_MAP = {
-    "launch":       "أطلق",
-    "launches":     "أطلق",
-    "launched":     "أطلق",
-    "release":      "أصدر",
-    "releases":     "أصدر",
-    "released":     "أصدر",
-    "announce":     "أعلن عن",
-    "announces":    "أعلن عن",
-    "announced":    "أعلن عن",
-    "unveil":       "كشف عن",
-    "unveils":      "كشف عن",
-    "unveiled":     "كشف عن",
-    "introduce":    "قدّم",
-    "introduces":   "قدّم",
-    "introduced":   "قدّم",
-    "update":       "حدّث",
-    "updates":      "حدّث",
-    "updated":      "حدّث",
-    "upgrade":      "طوّر",
-    "upgrades":     "طوّر",
-    "build":        "بنى",
-    "builds":       "بنى",
-    "deploy":       "نشر",
-    "deploys":      "نشر",
-    "raise":        "جمع",
-    "raises":       "جمع",
-    "raised":       "جمع",
-    "fund":         "مُوِّل",
-    "funded":       "مُوِّل",
-    "invest":       "استثمر",
-    "invests":      "استثمر",
-    "layoff":       "تسريح",
-    "layoffs":      "سرّح موظفين",
-    "fire":         "سرّح",
-    "fires":        "سرّح",
-    "fired":        "سرّح",
-    "cut":          "خفّض",
-    "cuts":         "خفّض",
-    "partner":      "تعاون مع",
-    "partners":     "تعاون مع",
-    "acquire":      "استحوذ على",
-    "acquires":     "استحوذ على",
-    "beat":         "تفوّق على",
-    "beats":        "تفوّق على",
-    "surpass":      "تجاوز",
-    "surpasses":    "تجاوز",
-    "open":         "فتح",
-    "opens":        "فتح",
-    "open-source":  "نشر بشكل مفتوح المصدر",
+    "launches": "أطلق", "launched": "أطلق", "launch": "أطلق",
+    "releases": "أصدر", "released": "أصدر",
+    "announces": "أعلن", "announced": "أعلن",
+    "unveils": "كشف عن", "unveiled": "كشف عن",
+    "introduces": "قدّم", "introduced": "قدّم",
+    "raises": "جمع", "raised": "جمع",
+    "acquires": "استحوذ على", "acquired": "استحوذ على",
+    "open-sources": "نشر مفتوح المصدر",
+    "beats": "تفوّق على", "surpasses": "تجاوز",
+    "layoffs": "سرّح موظفين", "lays off": "سرّح",
 }
 
-# أرقام ووحدات
 NUMBER_RE = re.compile(
-    r'(\$?\d[\d,\.]*)\s*(billion|million|thousand|%|x|times|'
-    r'مليار|مليون|ألف|بالمئة|أضعاف)?',
+    r'(\$?\d[\d,\.]*)[\s\-]*(billion|million|thousand|%|x\b|times)',
     re.IGNORECASE
 )
 
-# ══════════════════════════════════════════════════════════════
-# ②  قوالب التغريدات المكتوبة يدوياً — لكل فئة مجموعة قوالب
-# ══════════════════════════════════════════════════════════════
-
-# هوكس حسب الفئة
-HOOKS = {
-    "novelty": [
-        "⚡️ خبر AI ما تبيه يفوتك",
-        "🚀 شيء جديد في عالم الذكاء الاصطناعي",
-        "🔥 تطور ما كنا نتوقعه بهالسرعة",
-        "💥 إعلان يوم الحين — والكل يتحدث عنه",
-        "🧠 خبر AI يستاهل توقف دقيقة",
-        "⚡️ تحديث يغير المعادلة في عالم AI",
-        "🚨 إطلاق جديد يستاهل الانتباه",
-    ],
-    "jobs": [
-        "🚨 سؤال يشغل بال كثير منا الحين",
-        "⚠️ خبر يخلي الواحد يفكر في مستقبله",
-        "🔴 تحول يمس سوق العمل مباشرة",
-        "💡 AI والوظائف — خبر جديد يستاهل",
-        "🤔 تغيير في سوق الشغل — الصورة تتضح",
-    ],
-    "funding": [
-        "💰 تمويل ضخم دخل عالم AI",
-        "📈 أموال طائلة تتجه لـ AI",
-        "💵 رقم ضخم يعكس حجم الثقة في AI",
-        "🏦 استثمار كبير — والأرقام تعكس الاتجاه",
-    ],
-    "ksa": [
-        "🇸🇦 المملكة في الخبر — تفاصيل تستاهل",
-        "🚀 رؤية 2030 والذكاء الاصطناعي",
-        "💡 المملكة مو متلقية — تبني وتطور",
-        "🔥 SDAIA تتحرك — خبر جديد",
-    ],
-    "risk": [
-        "⚠️ تحذير جدي من عالم AI — اقرأ قبل تمر",
-        "🔴 جانب ما يتحدث عنه كثير في عالم AI",
-        "🚨 مخاطر AI — الصورة الكاملة",
-    ],
-    "open_source": [
-        "🧠 نموذج مفتوح المصدر جديد — والنتائج مفاجئة",
-        "⚡️ نموذج AI مجاني يتفوق على المدفوع",
-        "🔓 مفتوح المصدر يغير قواعد اللعبة",
-    ],
-    "general": [
-        "🧠 خبر تقني يستاهل دقيقة من وقتك",
-        "📌 من أخبار AI يوم الحين",
-        "💻 تطور في عالم الذكاء الاصطناعي",
-        "🌐 خبر AI ما يطلع كل يوم",
-        "🎯 خبر يستاهل الانتباه في عالم التقنية",
-        "⚙️ جديد في عالم AI — الفكرة ببساطة",
-    ],
-}
-
-# قوالب الجسم — {C}=شركة، {T}=أداة، {A}=فعل، {N}=رقم
-BODY_TEMPLATES = {
-    "novelty": [
-        "{C} {A} {T} — نموذج يعيد تشكيل توقعاتنا من AI",
-        "{C} {A} {T} بقدرات جديدة تفوق ما كان متاحاً",
-        "{C} {A} {T} — تحديث يستاهل تجربته",
-        "{C} تكشف عن {T} بمزايا لم نشوفها من قبل",
-        "الإعلان الرسمي: {C} {A} {T} بمستوى جديد",
-    ],
-    "jobs": [
-        "{C} تسرّح {N} موظف — وهذا يثير تساؤلات جدية عن مستقبل الوظائف",
-        "{C} تُقلّص فريقها البشري — {N} الأرقام تتحدث",
-        "التحول الرقمي يتسارع — {C} تُعيد هيكلة العمل",
-        "{C} و{N} موظف: الأتمتة تغير سوق الشغل بشكل غير مسبوق",
-    ],
-    "funding": [
-        "{C} تجمع {N} — ثقة الأسواق في AI تكبر",
-        "تمويل {N} لـ {C} — الرهان على AI يتسع",
-        "{C} تستقطب {N} في جولة تمويل جديدة",
-        "الأموال تتجه لـ {C}: {N} في أحدث جولة تمويل",
-    ],
-    "ksa": [
-        "المملكة تتقدم — {C} {A} وثيق الصلة برؤية 2030",
-        "{C} تدخل السوق السعودي بـ {T} — خطوة تستاهل المتابعة",
-        "خطوة جديدة نحو رؤية 2030 في عالم AI — التفاصيل تستاهل",
-        "SDAIA تُطلق مبادرة جديدة — AI في خدمة رؤية 2030",
-    ],
-    "risk": [
-        "دراسة جديدة تكشف: {C} و{T} تطرح تساؤلات عن الأمان",
-        "تحذيرات جدية من الاستخدام غير المقيد لـ {T}",
-        "{C} تواجه انتقادات — والتفاصيل مقلقة",
-    ],
-    "open_source": [
-        "{C} {A} {T} — متاح للجميع ويتفوق على المدفوع",
-        "{T} مفتوح المصدر من {C} — النتائج تتحدث بنفسها",
-        "{C} تنشر {T} مجاناً — ويبدو أنه يغير المعادلة",
-    ],
-    "general": [
-        "{C} {A} {T} — خطوة جديدة في مسيرة AI",
-        "{C} تكشف عن تطورات مهمة في عالم الذكاء الاصطناعي",
-        "{T} من {C} — وهذا ما يعنيه لنا",
-        "تطور جديد من {C} يستاهل المتابعة",
-    ],
-}
-
-# نقاط الحقائق — {N}=رقم، {T}=أداة، {C}=شركة
-FACT_POINTS = {
-    "speed": [
-        "السرعة تفوق النماذج السابقة بأشواط",
-        "وقت الاستجابة أسرع {N} مرة من الجيل السابق",
-        "الأداء {N} أسرع — وهذا يغير تجربة الاستخدام فعلياً",
-        "معالجة أسرع = نتائج أفضل في وقت أقل",
-    ],
-    "cost": [
-        "التكلفة انخفضت {N} — وهذا يفتح الباب لتطبيقات أوسع",
-        "أرخص {N} من المنافسين — وهذا يغير قرار الاعتماد عليه",
-        "سعر أقل = وصول أوسع لكل المطورين والشركات",
-    ],
-    "size": [
-        "النموذج يضم {N} معامل — حجم لم نشوفه من قبل",
-        "بـ {N} مليار معامل — يتجاوز ما كان يُعتقد ممكناً",
-    ],
-    "jobs": [
-        "وظائف تتغير — اللي يتكيف اليوم يتقدم غداً",
-        "{N} وظيفة تأثرت — والأرقام في ارتفاع",
-        "التحول في سوق الشغل يسرّع — المهارات الجديدة هي الأمان",
-        "من يتعلم AI اليوم يضمن مكانه في سوق الشغل غداً",
-    ],
-    "funding": [
-        "هذا التمويل يعكس ثقة كبيرة في مستقبل AI",
-        "الاستثمار الكبير = منافسة أشد في السوق",
-        "أموال ضخمة تعني تطورات أسرع في المنتجات",
-        "{N} دولار — الأكبر في قطاع AI هذا العام",
-    ],
-    "open_source": [
-        "مفتوح المصدر يعني أي مطور يقدر يبني عليه",
-        "يتفوق على نماذج مدفوعة — وهذا يغير قرار الشراء",
-        "المجتمع التقني يقدر يطوره — وهذا يسرّع الابتكار",
-    ],
-    "ksa": [
-        "يناسب أهداف رؤية 2030 في تطوير التقنية",
-        "خطوة تعزز مكانة المملكة في خارطة AI العالمية",
-        "SDAIA تقود هذا التحول — والنتائج ستظهر قريباً",
-    ],
-    "capability": [
-        "يفهم النص والصوت والصورة في نفس الوقت",
-        "قادر على استيعاب سياق أطول بكثير من السابق",
-        "أداء أفضل في المهام المعقدة والتحليل العميق",
-        "يحل مسائل كانت تستغرق ساعات في دقائق",
-    ],
-    "general": [
-        "هذا يعني تطبيقات عملية أكثر في حياتنا اليومية",
-        "التأثير سيصل لكثير من القطاعات — التقنية والتعليم والصحة",
-        "AI يتقدم بشكل أسرع من كل التوقعات",
-        "اللي يتابع التطورات الحين يفهم إلى وين يسير السوق",
-    ],
-}
-
-# أسئلة الختام حسب الفئة
-CLOSINGS = {
-    "novelty": [
-        "جربته؟ وش انطباعك؟ 💬",
-        "وش رأيك — يستاهل التجربة؟",
-        "من وجهة نظرك — مين يقود سباق AI الحين؟",
-        "تشوف نفسك تستخدمه؟ وش أكثر ميزة تهمك؟",
-        "وش أكثر شيء لفت نظرك فيه؟ 💬",
-    ],
-    "jobs": [
-        "وش المهارة اللي تعتقد AI ما يقدر يعوّضها؟ 💬",
-        "تشوف نفسك جاهز لهالتحول؟",
-        "وش خطتك عشان تتكيف مع هذا التغيير؟",
-        "برأيك — فرصة ولا تهديد؟ 💬",
-    ],
-    "funding": [
-        "استثمار ذكي ولا فقاعة برأيك؟ 🤔",
-        "وش القطاع اللي تراه الأكثر استفادة من هذا؟",
-        "تشوف AI فرصة استثمارية حقيقية؟ 💬",
-        "برأيك أين تذهب هذه الأموال بالضبط؟",
-    ],
-    "ksa": [
-        "وش تتوقع من المملكة في AI خلال ٣ سنوات؟ 💬",
-        "تشوف رؤية 2030 تحقق أهدافها في التقنية؟",
-        "وش أكثر مبادرة تقنية سعودية تتابعها؟ 💬",
-    ],
-    "risk": [
-        "وش الحل الأمثل برأيك — قيود أم توعية؟ 💬",
-        "تشوف الفوائد أكبر من المخاطر؟",
-        "وش أكثر مخاوفك من AI في حياتك اليومية؟ 💬",
-    ],
-    "open_source": [
-        "تفضل مفتوح المصدر ولا المدفوع؟ وليش؟ 💬",
-        "برأيك النماذج المفتوحة تهدد المدفوعة؟",
-        "وش أبرز مشروع تشوف إنه يستفيد من هذا؟ 💬",
-    ],
-    "general": [
-        "وش رأيكم؟ 💬",
-        "يهمك هذا الخبر؟ وش تفكر؟",
-        "كيف تشوف تأثيره على مجالك؟ 💬",
-        "وش أكثر شيء يلفت انتباهك فيه؟",
-        "تتوقع له تأثير على حياتك؟ شارك رأيك 💬",
-    ],
-}
-
-
-# ══════════════════════════════════════════════════════════════
-# ③  منطق استخراج الحقائق
-# ══════════════════════════════════════════════════════════════
 
 def _detect_company(text: str) -> str:
     t = text.lower()
-    for key, name in COMPANY_MAP.items():
-        if key in t:
-            return name
+    for k, v in COMPANY_MAP.items():
+        if k in t:
+            return v
     return ""
 
 
 def _detect_tool(text: str) -> str:
     t = text.lower()
-    # الأدوات المركّبة أولاً (gpt-4o, stable diffusion, etc.)
-    for key in sorted(TOOL_MAP.keys(), key=len, reverse=True):
-        if key in t:
-            return TOOL_MAP[key]
+    for k in sorted(TOOL_MAP, key=len, reverse=True):
+        if k in t:
+            return TOOL_MAP[k]
     return ""
 
 
 def _detect_action(text: str) -> str:
     t = text.lower()
-    for key, val in sorted(ACTION_MAP.items(), key=lambda x: len(x[0]), reverse=True):
-        if re.search(r'\b' + re.escape(key) + r'\b', t):
-            return val
+    for k in sorted(ACTION_MAP, key=len, reverse=True):
+        if k in t:
+            return ACTION_MAP[k]
     return "أطلق"
 
 
-def _detect_numbers(text: str) -> str:
-    """يستخرج أبرز رقم من النص"""
-    matches = NUMBER_RE.findall(text)
-    if not matches:
+def _detect_number(text: str) -> str:
+    m = NUMBER_RE.findall(text)
+    if not m:
         return ""
-    # إعطاء الأولوية للأرقام الكبيرة (مليارات > ملايين > ...)
-    priority = {"billion": 4, "million": 3, "مليار": 4, "مليون": 3,
-                "%": 2, "x": 2, "times": 2, "thousand": 1, "ألف": 1}
-    best = max(matches, key=lambda m: priority.get(m[1].lower(), 0) if m[1] else 0)
-    num = best[0].replace(",", "")
-    unit = best[1]
     unit_ar = {
-        "billion": "مليار دولار",
-        "million": "مليون",
-        "thousand": "ألف",
-        "%": "%",
-        "x": "x",
-        "times": "x",
-        "مليار": "مليار",
-        "مليون": "مليون",
-    }.get(unit.lower() if unit else "", unit)
-    return f"{num} {unit_ar}".strip()
+        "billion": "مليار دولار", "million": "مليون دولار",
+        "thousand": "ألف", "%": "%", "x": "ضعف", "times": "ضعف"
+    }
+    best = m[0]
+    num = best[0].replace(",", "")
+    unit = unit_ar.get(best[1].lower(), best[1])
+    return f"{num} {unit}".strip()
 
 
-def _detect_category(text: str, entities: dict) -> str:
-    """يحدد فئة الخبر بدقة"""
-    t = text.lower()
-    company = entities.get("company", "").lower()
-    
-    # فئة مفتوح المصدر
-    if any(w in t for w in ["open-source", "open source", "opensource", "open weights"]):
+def _detect_category(title: str, summary: str) -> str:
+    t = (title + " " + summary).lower()
+    if any(w in t for w in ["art", "museum", "creative", "design", "fashion",
+                              "architecture", "painting", "sculpture", "فن",
+                              "متحف", "تصميم", "إبداع", "لوحة"]):
+        return "arts"
+    if any(w in t for w in ["open-source", "open source", "open weights", "opensource"]):
         return "open_source"
-    
-    # فئة التمويل
-    if any(w in t for w in ["raise", "raises", "raised", "funding", "billion", "million",
-                             "invest", "valuation", "venture", "series a", "series b"]):
-        if any(w in t for w in ["billion", "million", "$"]):
-            return "funding"
-    
-    # فئة الوظائف
-    if any(w in t for w in ["layoff", "layoffs", "fired", "cut jobs", "job", "workforce",
-                             "employees", "workers", "automation replac"]):
-        return "jobs"
-    
-    # فئة السعودية
-    if any(w in t for w in ["saudi", "ksa", "riyadh", "vision 2030", "sdaia", "neom",
-                             "aramco", "sabic", "stc"]):
-        return "ksa"
-    
-    # فئة المخاطر
-    if any(w in t for w in ["risk", "danger", "warning", "concern", "ban", "regulate",
-                             "safety", "harm", "bias", "misinformation"]):
-        return "risk"
-    
-    # فئة الإطلاق (الافتراضي للجديد)
-    if any(w in t for w in ["launch", "release", "unveil", "announce", "new", "introduce",
-                             "debut", "first", "update", "upgrade"]):
-        return "novelty"
-    
-    return "general"
-
-
-def _select_fact_type(category: str, number: str, text: str) -> str:
-    """يختار نوع نقطة الحقيقة المناسبة"""
-    t = text.lower()
-    if category == "jobs":
-        return "jobs"
-    if category == "funding":
+    if any(w in t for w in ["billion", "million", "funding", "raise", "invest",
+                              "valuation", "تمويل", "استثمار"]):
         return "funding"
-    if category == "ksa":
+    if any(w in t for w in ["layoff", "fired", "cut jobs", "job loss", "workforce",
+                              "تسريح", "وظيف", "automation replac"]):
+        return "jobs"
+    if any(w in t for w in ["saudi", "ksa", "riyadh", "vision 2030", "sdaia",
+                              "سعودي", "المملكة", "رؤية", "2030"]):
         return "ksa"
-    if category == "open_source":
-        return "open_source"
-    if "faster" in t or "speed" in t or "quicker" in t:
-        return "speed"
-    if "cheaper" in t or "cost" in t or "price" in t or "afford" in t:
-        return "cost"
-    if "billion parameter" in t or "parameter" in t:
-        return "size"
-    if "multimodal" in t or "image" in t or "audio" in t or "vision" in t:
-        return "capability"
-    return "general"
+    if any(w in t for w in ["discover", "research", "study", "found", "science",
+                              "space", "اكتشاف", "علم", "فضاء", "دراسة"]):
+        return "discovery"
+    if any(w in t for w in ["risk", "danger", "warning", "ban", "regulate",
+                              "safety", "خطر", "تحذير", "تنظيم"]):
+        return "risk"
+    return "novelty"
 
 
-def _fill_template(template: str, company: str, tool: str, action: str, number: str) -> str:
-    """يحقن الحقائق في القالب"""
-    entity = tool or company or "AI"
-    c = company or tool or "AI"
-    t = tool or company or "نموذج AI"
-    a = action or "أطلق"
-    n = number or ""
-    
-    result = template
-    result = result.replace("{C}", c)
-    result = result.replace("{T}", t)
-    result = result.replace("{A}", a)
-    result = result.replace("{N}", n if n else "نتائج لافتة")
-    result = result.replace("{E}", entity)
-    return result.strip()
+# ══════════════════════════════════════════════════════════════════
+# قوالب المنشور الكاملة — مكتوبة بلهجة سعودية طبيعية جداً
+# هيكل كل قالب: hook + body1 + body2 + q
+# الحد الأقصى الإجمالي: 280 حرف
+# ══════════════════════════════════════════════════════════════════
+
+FULL_TEMPLATES = {
+
+    # ── الذكاء الاصطناعي: إطلاق جديد ──────────────────────────
+    "novelty": [
+        {
+            "hook":  "⚡️ {C} أطلقت {T} — والأرقام تقول كل شيء",
+            "body1": "{T} يعمل بسرعة {N} أسرع من السابق، وأُتيح للجميع الآن.",
+            "body2": "الجديد إنه يفهم السياق بشكل أعمق ويدعم العربية بشكل أفضل.",
+            "q":     "وش أول شيء تجربه فيه؟ 💬",
+        },
+        {
+            "hook":  "🚀 {C} تعلن {T} — ما توقعنا هذا الوقت",
+            "body1": "النموذج الجديد يتفوق على كل ما قبله في الأداء والسرعة بفرق واضح.",
+            "body2": "أكثر شيء يلفت إن السعر انخفض — وهذا يعني وصول أوسع لعموم الناس.",
+            "q":     "هل تشوف أن سباق AI ينفعنا أو يخوّفنا؟ 💬",
+        },
+        {
+            "hook":  "🔥 خبر AI ما تبيه يفوتك",
+            "body1": "{C} {A} {T}، وهو يقدر الآن يحل مسائل كانت تستغرق ساعات في دقائق.",
+            "body2": "المطورون بدأوا يبنون عليه تطبيقات حقيقية من أول يوم — وهذا مو كلام.",
+            "q":     "جربته؟ شاركنا انطباعك 💬",
+        },
+        {
+            "hook":  "💥 إعلان يستاهل تقف عنده",
+            "body1": "{C} أعلنت رسمياً عن {T} بعد أشهر اختبار — والآن متاح للجمهور.",
+            "body2": "المميز فيه إنه يدعم مهام متعددة في نفس الوقت مع دقة أعلى من المنافسين.",
+            "q":     "تشوف نفسك تستخدمه في عملك؟ كيف؟ 💬",
+        },
+        {
+            "hook":  "🧠 تطور AI جديد — والكل يتكلم عنه",
+            "body1": "{T} من {C} يكسر التوقعات: أداء يتجاوز {N} مقارنة بالإصدار السابق.",
+            "body2": "التحسين مو بس في الأرقام — المستخدمون يقولون التجربة تحسّنت فعلياً.",
+            "q":     "مين يقود سباق AI الحين من وجهة نظرك؟ 💬",
+        },
+    ],
+
+    # ── تمويل ──────────────────────────────────────────────────
+    "funding": [
+        {
+            "hook":  "💰 {C} جمعت {N} — الرهان على AI يكبر",
+            "body1": "هذا التمويل يجعل {C} الأكثر تمويلاً في AI هذا العام بفرق كبير.",
+            "body2": "المستثمرون يراهنون على النمو طويل الأمد — والأرقام تعكس ثقة حقيقية.",
+            "q":     "استثمار ذكي ولا فقاعة برأيك؟ 🤔",
+        },
+        {
+            "hook":  "📈 {N} تتجه لـ {C} — وهذا يقول كثير",
+            "body1": "جولة التمويل ترفع تقييم {C} لمستويات لم نشوفها من قبل في القطاع.",
+            "body2": "الإنفاق على AI في العالم تجاوز كل التوقعات — ونحن في بداية الموجة.",
+            "q":     "وش القطاع اللي يستفيد أكثر من هذا التمويل؟ 💬",
+        },
+    ],
+
+    # ── وظائف ──────────────────────────────────────────────────
+    "jobs": [
+        {
+            "hook":  "🚨 {C} و{N} موظف — سؤال يشغل بالي",
+            "body1": "{C} أعلنت تسريح {N} موظف وذكرت الأتمتة كسبب رئيسي لإعادة الهيكلة.",
+            "body2": "اللي يتعلم يعمل مع AI في مجاله — مو ضده — هو اللي يحمي مكانه.",
+            "q":     "وش المهارة اللي تعتقد إن AI ما يقدر يعوّضها؟ 💬",
+        },
+        {
+            "hook":  "⚠️ AI والوظائف — الصورة بدأت تتضح",
+            "body1": "دراسة حديثة: {N} من الوظائف الحالية ستتغير جوهرياً خلال 5 سنوات.",
+            "body2": "لكن نفس الدراسة تؤكد إن AI سيخلق أدواراً جديدة لم تكن موجودة أصلاً.",
+            "q":     "تشوف نفسك مستعداً لهذا التحول؟ وش خطتك؟ 💬",
+        },
+    ],
+
+    # ── مفتوح المصدر ───────────────────────────────────────────
+    "open_source": [
+        {
+            "hook":  "🔓 {C} تفتح {T} للجميع — وهذا يغير المعادلة",
+            "body1": "{T} أصبح مفتوح المصدر ويتفوق على نماذج مدفوعة بآلاف الدولارات شهرياً.",
+            "body2": "أي مطور أو شركة صغيرة تقدر الحين تبني تطبيقات AI متقدمة بدون تكاليف.",
+            "q":     "تفضل مفتوح المصدر ولا المدفوع؟ وليش؟ 💬",
+        },
+        {
+            "hook":  "🧠 نموذج مجاني يتفوق على المدفوع",
+            "body1": "{C} أصدرت {T} مفتوح المصدر وتفوّق على نماذج تطلب اشتراكاً شهرياً.",
+            "body2": "المجتمع التقني طوّره في ساعات — الذكاء الجماعي أقوى من أي شركة منفردة.",
+            "q":     "النماذج المفتوحة ستهزم المدفوعة نهاية المطاف؟ 💬",
+        },
+    ],
+
+    # ── السعودية ───────────────────────────────────────────────
+    "ksa": [
+        {
+            "hook":  "🇸🇦 المملكة تتحرك في AI — خبر يستاهل",
+            "body1": "خطوة جديدة نحو رؤية 2030: مبادرة تقنية تطوّر حلول AI للسوق العربي.",
+            "body2": "SDAIA تقود هذا التحول والمملكة أصبحت وجهة جدية للشركات التقنية الكبرى.",
+            "q":     "وش تتوقع المملكة تحقق في AI خلال ٣ سنوات؟ 💬",
+        },
+        {
+            "hook":  "💡 السعودية + AI = مستقبل واعد",
+            "body1": "{C} شريك استراتيجي جديد للمملكة في مشاريع الذكاء الاصطناعي الوطنية.",
+            "body2": "الاستثمار السعودي في التقنية يتسارع — ورؤية 2030 تحوّل المشهد فعلاً.",
+            "q":     "وش المجال اللي تتمنى AI يطوّره في المملكة أولاً؟ 💬",
+        },
+    ],
+
+    # ── فنون وثقافة ────────────────────────────────────────────
+    "arts": [
+        {
+            "hook":  "🎨 AI والفنون — حدود بدأت تتلاشى",
+            "body1": "أدوات AI تولّد أعمالاً فنية احترافية من وصف نصي بسيط في ثوانٍ معدودة.",
+            "body2": "الجدل لا يزال قائماً: هل يُثري عالم الفن أم يُهدد الفنانين؟ الإجابة: الاثنين معاً.",
+            "q":     "تشوف AI شريك للفنان ولا منافس له؟ 💬",
+        },
+        {
+            "hook":  "🖼️ اكتشاف فني يستاهل الانتباه",
+            "body1": "باحثون استخدموا AI لكشف لوحة مخفية تحت طبقات الطلاء في عمل عمره أكثر من 400 سنة.",
+            "body2": "التقنية تقرأ الطبقات بدون لمس اللوحة — وهذا يفتح بابًا جديداً لدراسة تاريخ الفن.",
+            "q":     "وش أكثر اكتشاف فني يسحرك؟ 💬",
+        },
+        {
+            "hook":  "✨ إبداع + تقنية = مستقبل الفنون",
+            "body1": "معرض فني في {C} يجمع الفن التقليدي مع AI في تجربة تفاعلية غير مسبوقة.",
+            "body2": "الزوار يتفاعلون بأجسادهم والـ AI يُعيد رسم اللوحة في الوقت الحقيقي.",
+            "q":     "لو كنت هناك — كيف تحب تتفاعل مع العمل الفني؟ 💬",
+        },
+        {
+            "hook":  "🌍 عالم الفن يتغيّر — وأنت؟",
+            "body1": "متاحف عالمية كبرى بدأت توظّف AI لاستعادة أعمال فنية تالفة بدقة مذهلة.",
+            "body2": "ما كان ممكناً قبل عشر سنوات يصير الآن في دقائق — التقنية أعادت كنوزاً ضائعة.",
+            "q":     "تحب تزور معرضاً فنياً يعمل بـ AI؟ وش انطباعك؟ 💬",
+        },
+    ],
+
+    # ── اكتشافات علمية ─────────────────────────────────────────
+    "discovery": [
+        {
+            "hook":  "🔭 اكتشاف علمي يخلّي الواحد يفكر",
+            "body1": "باحثون استخدموا AI لاكتشاف {T} جديد — وهذا يُعيد رسم نظريات علمية قديمة.",
+            "body2": "ما يبهر إن الـ AI وصل للنتيجة في أسابيع بعد أن عجز العلماء عقوداً بالطرق التقليدية.",
+            "q":     "وش أكثر اكتشاف علمي غيّر نظرتك للعالم؟ 💬",
+        },
+        {
+            "hook":  "🌍 العلم لا يتوقف — اكتشاف جديد",
+            "body1": "دراسة حديثة تكشف عن {T} لم يكن معروفاً من قبل وتتحدى مفاهيم درسناها.",
+            "body2": "الـ AI حلّل بيانات كانت تستغرق عقوداً — أنجزها الآن في أيام معدودة.",
+            "q":     "هل يجذبك عالم الاكتشافات؟ وش المجال اللي يثير فضولك أكثر؟ 💬",
+        },
+    ],
+
+    # ── مخاطر ─────────────────────────────────────────────────
+    "risk": [
+        {
+            "hook":  "⚠️ تحذير جدي من عالم AI — اقرأ قبل تمر",
+            "body1": "دراسة جديدة: {T} يُنتج معلومات خاطئة في {N} من الحالات تحت ضغط أسئلة معينة.",
+            "body2": "الحل مو إيقاف AI — بل تطوير التفكير النقدي والتحقق دائماً من المعلومات المهمة.",
+            "q":     "وش أكثر شيء يقلقك من الاعتماد على AI؟ 💬",
+        },
+        {
+            "hook":  "🔴 AI والمخاطر — محادثة لازم نخوضها",
+            "body1": "خبراء يحذرون إن التوسع السريع في AI بدون تنظيم يخلق مخاطر ما ندركها الحين.",
+            "body2": "لكن التنظيم المفرط يُبطئ الابتكار — والتوازن هو التحدي الحقيقي أمام الحكومات.",
+            "q":     "تشوف التنظيم ضرورة ولا عائق للتقدم؟ 💬",
+        },
+    ],
+
+    # ── عام ────────────────────────────────────────────────────
+    "general": [
+        {
+            "hook":  "🧠 خبر AI يستاهل دقيقة من وقتك",
+            "body1": "{C} {A} {T} — وهذا يُعيد رسم توقعاتنا من الذكاء الاصطناعي هذا العام.",
+            "body2": "التأثير مو بس تقني — التعليم والصحة والأعمال ستشعر به قريباً جداً.",
+            "q":     "كيف تشوف تأثيره على مجالك تحديداً؟ 💬",
+        },
+        {
+            "hook":  "📌 من أخبار AI اليوم — شيء لفت نظري",
+            "body1": "{C} تطوّر {T} ليكون أكفأ وأقل استهلاكاً للطاقة — تحدٍّ كان معلقاً سنوات.",
+            "body2": "الاستدامة جزء أساسي من محادثة AI الآن — تشغيل النماذج الكبيرة يكلّف طاقة ضخمة.",
+            "q":     "هل تفكر في التأثير البيئي لـ AI؟ 💬",
+        },
+        {
+            "hook":  "💡 تطور هادئ — لكن تأثيره ضخم",
+            "body1": "{C} تُحسّن {T} بشكل تدريجي — والنتائج الجديدة تفاجئ حتى المتخصصين.",
+            "body2": "التقدم الحقيقي في AI أحياناً مو في الإعلانات الكبيرة — بل في التحسينات اليومية.",
+            "q":     "وش التطور في AI أثّر فيك شخصياً أكثر؟ 💬",
+        },
+    ],
+}
+
+# الحد الأقصى للتغريدة بالحروف
+MAX_TWEET_CHARS = 280
 
 
-# ══════════════════════════════════════════════════════════════
-# ④  ContentAgent الرئيسي
-# ══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════
+# ContentAgent v6
+# ══════════════════════════════════════════════════════════════════
 
 class ContentAgent:
     """
-    وكيل الصياغة التفاعلية v4 — بدون ترجمة آلية
-    يأخذ مقالة مُحلَّلة من SearchAgent ويُنتج تغريدة احترافية.
+    وكيل الصياغة v6 — منشور كامل المعنى، لهجة سعودية حقيقية.
+    الوكيل يُدقق المنشور كاملاً (هوك + معلومتان + سؤال) قبل النشر.
     """
 
     def __init__(self):
-        self.name = "ContentAgent-v4"
+        self.name = "ContentAgent-v6"
 
+    # ── بناء المنشور ──────────────────────────────────────────
     def build_tweet(self, article: dict) -> str:
-        """
-        بناء تغريدة سعودية مكتملة من مقالة إنجليزية.
-        يعتمد على استخراج الحقائق وقوالب مكتوبة يدوياً — لا ترجمة.
-        """
-        title_en   = article.get("title",   "") or ""
-        summary_en = (article.get("summary", "") or "")[:400]
-        full_text  = f"{title_en} {summary_en}"
+        title   = article.get("title",   "") or ""
+        summary = (article.get("summary", "") or "")[:600]
+        full    = f"{title} {summary}"
 
-        # ── ① استخراج الحقائق ─────────────────────────────
-        entities   = article.get("entities", {})
-        company    = entities.get("company", "") or _detect_company(full_text)
-        tool       = entities.get("tool",    "") or _detect_tool(full_text)
-        action     = _detect_action(full_text)
-        number     = entities.get("number",  "") or _detect_numbers(full_text)
-        category   = _detect_category(full_text, {"company": company, "tool": tool})
+        entities = article.get("entities", {})
+        company  = entities.get("company", "") or _detect_company(full)
+        tool     = entities.get("tool",    "") or _detect_tool(full)
+        action   = _detect_action(full)
+        number   = entities.get("number",  "") or _detect_number(full)
+        category = entities.get("category", "") or _detect_category(title, summary)
 
-        # ── ② اختيار عناصر القالب ────────────────────────
-        hook_pool    = HOOKS.get(category, HOOKS["general"])
-        body_pool    = BODY_TEMPLATES.get(category, BODY_TEMPLATES["general"])
-        closing_pool = CLOSINGS.get(category, CLOSINGS["general"])
+        pool = FULL_TEMPLATES.get(category, FULL_TEMPLATES["general"])
+        tpl  = random.choice(pool)
 
-        hook    = random.choice(hook_pool)
-        body_t  = random.choice(body_pool)
-        closing = random.choice(closing_pool)
+        c = company or tool or "الشركة"
+        t = tool or company or "النموذج"
+        n = number or "نتائج لافتة"
 
-        body = _fill_template(body_t, company, tool, action, number)
+        # للفنون والاكتشافات: تجنب قوالب تتطلب شركة/أداة محددة إذا لم تُكتشف
+        if category in ("arts", "discovery") and not company and not tool:
+            # اختر قالباً لا يحتوي {C} أو {T} في body1
+            static_pool = [tpl_ for tpl_ in pool
+                           if '{C}' not in tpl_['body1'] and '{T}' not in tpl_['body1']]
+            if static_pool:
+                tpl = random.choice(static_pool)
 
-        # ── ③ اختيار نقطتين مناسبتين ─────────────────────
-        fact_type = _select_fact_type(category, number, full_text)
-        fact_pool = FACT_POINTS.get(fact_type, FACT_POINTS["general"])
-        # نقطة عامة دائماً من "general" كاحتياطي
-        general_pool = FACT_POINTS["general"]
+        def fill(s: str) -> str:
+            return (s.replace("{C}", c)
+                     .replace("{T}", t)
+                     .replace("{A}", action)
+                     .replace("{N}", n))
 
-        p1_raw = random.choice(fact_pool)
-        p2_raw = random.choice([f for f in general_pool if f != p1_raw] or general_pool)
+        hook  = fill(tpl["hook"])
+        body1 = fill(tpl["body1"])
+        body2 = fill(tpl["body2"])
+        q     = fill(tpl["q"])
 
-        p1 = _fill_template(p1_raw, company, tool, action, number)
-        p2 = _fill_template(p2_raw, company, tool, action, number)
+        # تجميع المنشور كاملاً أولاً
+        tweet = f"{hook}\n\n{body1}\n{body2}\n\n{q}"
 
-        # ── ④ تجميع التغريدة ─────────────────────────────
-        # نمط A — كامل (هوك + جسم + نقطتين + ختام)
-        tweet_a = f"{hook}\n\n{body}\n\n← {p1}\n← {p2}\n\n{closing}"
-        if tweet_length(tweet_a) <= 270:
-            return tweet_a
+        # إذا تجاوز الحد الأقصى — اختصر body2 عند آخر علامة ترقيم طبيعية
+        if tweet_length(tweet) > MAX_TWEET_CHARS:
+            b2 = body2
+            for punct in ['—', '،', '.']:
+                pos = b2.rfind(punct, 20, 100)
+                if pos > 20:
+                    b2 = b2[:pos].strip()
+                    break
+            else:
+                b2 = b2[:90].strip()
+            tweet = f"{hook}\n\n{body1}\n{b2}\n\n{q}"
 
-        # نمط B — بدون نقطة ثانية
-        tweet_b = f"{hook}\n\n{body}\n\n← {p1}\n\n{closing}"
-        if tweet_length(tweet_b) <= 270:
-            return tweet_b
+        # إذا لا يزال طويلاً — أبقِ body1 فقط (جملة واحدة أفضل من جملة مقطوعة)
+        if tweet_length(tweet) > MAX_TWEET_CHARS:
+            tweet = f"{hook}\n\n{body1}\n\n{q}"
 
-        # نمط C — هوك + جسم + ختام
-        tweet_c = f"{hook}\n\n{body}\n\n{closing}"
-        if tweet_length(tweet_c) <= 270:
-            return tweet_c
+        return tweet
 
-        # نمط D — هوك مختصر + ختام مختصر
-        short_close = random.choice(["وش رأيكم؟ 💬", "كيف تشوفونه؟", "رأيكم؟ 💬"])
-        tweet_d = f"{hook}\n\n{body}\n\n{short_close}"
-        if tweet_length(tweet_d) <= 270:
-            return tweet_d
-
-        # نمط E — طوارئ: قطع الجسم
-        body_short = body[:140] if len(body) > 140 else body
-        return f"{hook}\n\n{body_short}\n\n{short_close}"
-
+    # ── تدقيق المنشور كاملاً ─────────────────────────────────
     def audit_tweet(self, tweet_text: str) -> dict:
-        """تدقيق جودة التغريدة"""
+        """
+        يُدقق المنشور الكامل — لا يُقيّم الأجزاء منفصلة.
+        يتحقق من: الهوك + معلومتان + سؤال + طول معقول + لا قوالب فارغة.
+        """
         issues = []
         length = tweet_length(tweet_text)
+        lines  = [l.strip() for l in tweet_text.split('\n') if l.strip()]
 
-        if length < 180:
-            issues.append(f"⚠️ قصيرة ({length} حرف)")
-        elif length > 275:
-            issues.append(f"❌ طويلة ({length} حرف)")
+        # ── تحقق الطول ──────────────────────────────────────
+        if length < 120:
+            issues.append(f"⚠️ المنشور قصير جداً ({length} حرف) — يحتاج محتوى أكثر")
+        if length > MAX_TWEET_CHARS:
+            issues.append(f"❌ المنشور طويل ({length} حرف) — يتجاوز {MAX_TWEET_CHARS}")
 
-        lines = tweet_text.split('\n')
-        first = lines[0] if lines else ""
-        HOOK_EMOJIS = ['🚨','⚡','🔥','🚀','💥','⚠️','🔴','💡','📌','💻','⚙️','🌐','🎯',
-                       '🧠','💰','📈','🏦','💵','🇸🇦','🤔','🔓','🔐']
-        if not any(e in first for e in HOOK_EMOJIS):
-            issues.append("⚠️ لا يوجد إيموجي في الهوك")
+        # ── تحقق الهوك (السطر الأول) ────────────────────────
+        if lines:
+            first_line = lines[0]
+            HOOK_EMOJIS = list("⚡🚀🔥💥🧠💰📈🇸🇦⚠️🔴💡📌💻🎨🔭✨🔓🚨🖼️🌍")
+            if not any(e in first_line for e in HOOK_EMOJIS):
+                issues.append("⚠️ الهوك بدون إيموجي")
+            if len(first_line) > 80:
+                issues.append("⚠️ الهوك طويل — يجب أن يكون في سطر واحد مختصر")
 
-        if not any(c in tweet_text for c in ['؟', '💬', 'شاركونا', 'رأيك', 'وش']):
-            issues.append("⚠️ لا يوجد ختام تفاعلي")
+        # ── تحقق وجود سؤال تفاعلي ───────────────────────────
+        if '؟' not in tweet_text and '💬' not in tweet_text:
+            issues.append("⚠️ لا يوجد سؤال تفاعلي في نهاية المنشور")
 
-        if re.search(r'[،،]\s*$', tweet_text.strip()):
-            issues.append("❌ تنتهي بجملة ناقصة")
+        # ── تحقق اكتمال المعلومة (سطرين على الأقل) ──────────
+        HOOK_STARTS = ['⚡','🚀','🔥','💥','🧠','💰','📈','🇸','⚠','🔴','💡','📌','💻','🎨','🔭','✨','🔓','🚨','🖼','🌍','📡']
+        def _is_q_line(ln):
+            return '💬' in ln or (ln.strip().endswith('؟') and len(ln.strip()) < 70)
+        content_lines = [l for l in lines if l and not any(l.startswith(em) for em in HOOK_STARTS) and not _is_q_line(l)]
+        if len(content_lines) < 2:
+            issues.append("⚠️ المعلومة أقل من سطرين — يحتاج محتوى أعمق")
+            issues.append("⚠️ المعلومة أقل من سطرين — يحتاج محتوى أعمق")
 
-        # تحقق من الجملة التي تبدأ بـ { (قالب لم يُملأ)
+        # ── تحقق عدم وجود قوالب فارغة ──────────────────────
         if '{' in tweet_text or '}' in tweet_text:
-            issues.append("❌ قالب غير مكتمل")
+            issues.append("❌ قالب غير مكتمل — متغيرات لم تُملأ")
 
+        # ── النتيجة النهائية ──────────────────────────────────
         score = max(0, 10 - len(issues) * 2)
         return {
-            "length": length,
-            "score":  score,
-            "issues": issues,
-            "passed": len(issues) == 0,
+            "length":  length,
+            "score":   score,
+            "issues":  issues,
+            "passed":  len(issues) == 0,
+            "summary": f"{length} حرف | {score}/10 | {'✅ ناجح' if not issues else ' | '.join(issues)}"
         }
 
+    # ── معالجة دفعة من الأخبار ───────────────────────────────
     def build_batch(self, articles: list) -> list:
-        """ينتج دفعة من التغريدات"""
         results = []
         for i, art in enumerate(articles, 1):
             tweet = self.build_tweet(art)
             audit = self.audit_tweet(tweet)
+
+            status = "✅" if audit["passed"] else f"⚠️ {audit['issues'][:1]}"
             logger.info(
-                f"[{self.name}] #{i} | "
-                f"{audit['length']} حرف | "
-                f"جودة: {audit['score']}/10 | "
-                f"{'✅' if audit['passed'] else '⚠️ ' + str(audit['issues'][:1])} | "
-                f"{art.get('source','?')}"
+                f"[{self.name}] #{i} | {audit['length']} حرف | "
+                f"جودة: {audit['score']}/10 | {status} | "
+                f"{art.get('source', '?')}"
             )
+
             results.append({
                 "tweet":     tweet,
                 "article":   art,
                 "audit":     audit,
-                "image_url": art.get("image_url"),
+                "image_url": art.get("image_url") or "",
             })
         return results
 
 
-# ── اختبار سريع ──────────────────────────────────────────────
+# ── اختبار سريع ─────────────────────────────────────────────────
 if __name__ == "__main__":
     SAMPLES = [
         {
-            "title":   "OpenAI launches GPT-5 with 10x faster inference and 50% lower cost",
-            "summary": "OpenAI announced GPT-5 today, its most powerful model yet. "
-                       "The new model is 10 times faster than GPT-4 and costs 50% less to use. "
-                       "It supports multimodal inputs including text, images, and audio.",
-            "source":  "TechCrunch",
-            "entities": {"company": "OpenAI", "tool": "GPT-5",
-                         "number": "10x", "category": "novelty"},
+            "title": "OpenAI launches GPT-5 with 10x faster inference and 50% lower cost",
+            "summary": "OpenAI today unveiled GPT-5 claiming 10 times faster than GPT-4 with full multimodal support.",
+            "source": "TechCrunch", "image_url": "https://example.com/img1.jpg",
+            "entities": {"company": "OpenAI", "tool": "GPT-5", "number": "10 ضعف", "category": "novelty"},
         },
         {
-            "title":   "Meta raises $10 billion to fund AI research and new data centers",
-            "summary": "Meta announced a $10 billion investment round to accelerate AI development.",
-            "source":  "VentureBeat",
-            "entities": {"company": "Meta", "tool": "",
-                         "number": "$10 billion", "category": "funding"},
+            "title": "Meta raises $10 billion for new AI data centers",
+            "summary": "Meta announced a massive $10 billion round to build AI infrastructure globally.",
+            "source": "VentureBeat", "image_url": "https://example.com/img2.jpg",
+            "entities": {"company": "Meta", "tool": "", "number": "10 مليار دولار", "category": "funding"},
         },
         {
-            "title":   "Google lays off 12,000 employees as AI automation grows",
-            "summary": "Google announced layoffs of 12,000 employees citing AI-driven automation.",
-            "source":  "The Verge",
-            "entities": {"company": "Google", "tool": "",
-                         "number": "12,000", "category": "jobs"},
+            "title": "Google lays off 12,000 employees citing AI automation",
+            "summary": "Google cutting 12000 jobs, saying AI-driven efficiency reduces need for large workforce.",
+            "source": "The Verge", "image_url": "",
+            "entities": {"company": "Google", "tool": "", "number": "12,000", "category": "jobs"},
         },
         {
-            "title":   "DeepSeek releases open-source model that outperforms GPT-4",
-            "summary": "DeepSeek released a new open-source model that benchmarks higher than GPT-4.",
-            "source":  "Wired",
-            "entities": {"company": "DeepSeek", "tool": "DeepSeek",
-                         "number": "", "category": "novelty"},
+            "title": "DeepSeek releases open-source model beating GPT-4 on all benchmarks",
+            "summary": "DeepSeek open-sourced a model outperforming GPT-4 on coding, reasoning, and language tasks.",
+            "source": "Wired", "image_url": "",
+            "entities": {"company": "DeepSeek", "tool": "DeepSeek", "number": "", "category": "open_source"},
         },
         {
-            "title":   "Saudi Arabia launches national AI strategy with SDAIA",
-            "summary": "Saudi Arabia unveiled a national AI strategy aligned with Vision 2030.",
-            "source":  "Arab News",
-            "entities": {"company": "SDAIA", "tool": "",
-                         "number": "", "category": "ksa"},
+            "title": "AI art installation transforms visitor movement into live paintings at Louvre",
+            "summary": "A new AI art show in Paris uses body movement to generate real-time paintings at the Louvre.",
+            "source": "Artsy", "image_url": "https://example.com/art.jpg",
+            "entities": {"company": "باريس", "tool": "", "number": "", "category": "arts"},
+        },
+        {
+            "title": "Scientists use AI to discover new antibiotic compound defeating superbugs",
+            "summary": "Researchers used deep learning to discover a new antibiotic that killed drug-resistant bacteria.",
+            "source": "MIT Technology Review", "image_url": "https://example.com/science.jpg",
+            "entities": {"company": "", "tool": "نموذج AI", "number": "", "category": "discovery"},
         },
     ]
 
     agent = ContentAgent()
-    print("=" * 60)
+    print("=" * 65)
+    print(f"  اختبار {agent.name}")
+    print("=" * 65)
+
+    passed = 0
     for art in SAMPLES:
-        tweet = agent.build_tweet(art)
-        audit = agent.audit_tweet(tweet)
-        print(f"\n📰 {art['title'][:55]}...")
-        print(f"{'─'*55}")
-        print(tweet)
-        print(f"{'─'*55}")
-        print(f"⟹ {audit['length']} حرف | جودة: {audit['score']}/10 | {'✅ نجح' if audit['passed'] else '⚠️ ' + str(audit['issues'])}")
-        print()
+        tw = agent.build_tweet(art)
+        au = agent.audit_tweet(tw)
+
+        print(f"\n📰 {art['title'][:60]}")
+        print("─" * 65)
+        print(tw)
+        print("─" * 65)
+        print(f"⟹ {au['summary']}")
+        if au["passed"]:
+            passed += 1
+
+    print("\n" + "=" * 65)
+    print(f"النتيجة: {passed}/{len(SAMPLES)} منشور ناجح")
+    print("=" * 65)
